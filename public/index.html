@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Hole Editor</title>
+    <script src="https://unpkg.com/konva@9.3.18/konva.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        #canvas-container {
+            width: 1024px;
+            height: 1024px;
+            margin: auto;
+            border: 2px solid #000;
+            background: #ccc;
+        }
+        #controls {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Face Hole Editor</h1>
+
+    <div id="canvas-container"></div>
+
+    <div id="controls">
+        <button id="prevTemplate">← Previous</button>
+        <button id="nextTemplate">Next →</button>
+        <input type="file" id="uploadInput" accept="image/*">
+        <button id="saveButton">Save</button>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", async () => {
+            const container = document.getElementById("canvas-container");
+            const uploadInput = document.getElementById("uploadInput");
+            const prevButton = document.getElementById("prevTemplate");
+            const nextButton = document.getElementById("nextTemplate");
+            const saveButton = document.getElementById("saveButton");
+
+            let templates = [];
+            let currentTemplateIndex = 0;
+
+            // Create Konva Stage
+            const stage = new Konva.Stage({
+                container: "canvas-container",
+                width: 1024,
+                height: 1024
+            });
+
+            // Create Layers
+            const userImageLayer = new Konva.Layer();
+            const templateLayer = new Konva.Layer();
+
+            // Create Konva Transformer
+            const transformer = new Konva.Transformer({
+                enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
+                rotateEnabled: false,
+                boundBoxFunc: (oldBox, newBox) => {
+                    if (newBox.width < 50 || newBox.height < 50) {
+                        return oldBox;
+                    }
+                    return newBox;
+                }
+            });
+
+            userImageLayer.add(transformer);
+
+            let userImage = null;
+            let templateImage = new Konva.Image();
+            templateLayer.add(templateImage);
+
+            // Fetch template images from the server
+            async function fetchTemplates() {
+                const response = await fetch("/templates");
+                const data = await response.json();
+                templates = data.templates;
+                loadTemplate();
+            }
+
+            // Load and display the template
+            function loadTemplate() {
+                if (templates.length === 0) return;
+
+                const templateSrc = `/templates/${templates[currentTemplateIndex]}`;
+                const img = new Image();
+                img.src = templateSrc;
+                img.onload = () => {
+                    templateLayer.remove()
+                    templateImage.image(img);
+                    templateImage.width(stage.width());
+                    templateImage.height(stage.height());
+                    templateLayer.listening(false)
+                    stage.add(templateLayer)
+                };
+            }
+
+            // Handle template switching
+            prevButton.addEventListener("click", () => {
+                currentTemplateIndex = (currentTemplateIndex - 1 + templates.length) % templates.length;
+                loadTemplate();
+            });
+
+            nextButton.addEventListener("click", () => {
+                currentTemplateIndex = (currentTemplateIndex + 1) % templates.length;
+                loadTemplate();
+            });
+
+            // Handle image upload
+            uploadInput.addEventListener("change", async (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const formData = new FormData();
+                formData.append("image", file);
+
+                const response = await fetch("/upload", { method: "POST", body: formData });
+                const data = await response.json();
+
+                const img = new Image();
+                img.src = data.imageUrl;
+                img.onload = () => {
+                    stage.remove(userImageLayer)
+                    if (userImage) {
+                        userImage.destroy();
+                        transformer.nodes([]);
+                    }
+
+                    // Create new Konva Image
+                    userImage = new Konva.Image({
+                        image: img,
+                        x: stage.width() / 4,
+                        y: stage.height() / 4,
+                        width: img.width / 2,
+                        height: img.height / 2,
+                        draggable: true,
+                        name: "userImage"
+                    });
+
+                    // Fix Konva event registration issue
+                    userImage.on("mouseover", () => {
+                        document.body.style.cursor = "pointer";
+                    });
+
+                    userImage.on("mouseout", () => {
+                        document.body.style.cursor = "default";
+                    });
+
+                    userImageLayer.add(userImage);
+                    stage.add(userImageLayer)
+                    userImageLayer.moveToBottom()
+                    // Ensure transformer attaches correctly
+                    transformer.nodes([userImage]);
+                    transformer.moveToTop();
+                };
+            });
+
+
+            // Enable mouse wheel zoom only on user image
+            stage.on("wheel", (e) => {
+                e.evt.preventDefault();
+                if (!userImage) return;
+
+                const scaleBy = 1.05;
+                const oldScale = userImage.scaleX();
+                const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+
+                userImage.scale({ x: newScale, y: newScale });
+                userImageLayer.batchDraw();
+            });
+
+            // Save the merged image
+saveButton.addEventListener("click", async () => {
+    transformer.remove();
+    transformer.nodes([]);
+
+    // Get the image data from Konva
+    var dataUrl = stage.toDataURL({ pixelRatio: 1 });
+    // Save modified image
+    const link = document.createElement("a");
+    link.download = "berrified.png";
+    link.href = dataUrl;
+    link.click();
+
+    transformer.nodes([userImage]);
+    transformer.moveToTop();
+    userImageLayer.add(transformer);
+});
+
+            await fetchTemplates();
+        });
+    </script>
+
+</body>
+</html>
