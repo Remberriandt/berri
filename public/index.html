@@ -103,7 +103,19 @@
           next_step = step_func(idx, source_array, width);
           // If our current point is within the image, add it to the list.
           if (w >= 0 && w < width && h >= 0 && h < height) {
-            point_list.push(w + 1, h+1);
+            const s = 0.9;
+
+// Calculate the center of the image
+const centerX = width / 2;
+const centerY = height / 2;
+
+// When processing your points:
+if (w >= 0 && w < width && h >= 0 && h < height) {
+  // Scale the point relative to the center:
+  const newW = centerX + s * (w - centerX) + 1;  // +1 if you need that constant offset
+  const newH = centerY + s * (h - centerY) + 1;
+  point_list.push(newW, newH);
+}
           }
           switch (next_step) {
             case up:
