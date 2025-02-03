@@ -1,182 +1,443 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Face Hole Editor</title>
-    <script src="https://unpkg.com/konva@9.3.18/konva.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Face Hole Editor</title>
+  <!-- Konva library -->
+  <script src="https://unpkg.com/konva@9.3.18/konva.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    #canvas-container {
+      width: 1024px;
+      height: 1024px;
+      margin: auto;
+      border: 2px solid #000;
+      background: #ccc;
+    }
+    #controls {
+      margin-top: 10px;
+    }
+  </style>
+  <!-- Marching Squares Code -->
+  <script>
+    /**
+     * Created by @sakri on 25-3-14.
+     * Edited and optimized by @mamrehn on 08-09-16
+     *
+     * Javascript port of:
+     * http://devblog.phillipspiess.com/2010/02/23/better-know-an-algorithm-1-marching-squares/
+     * Returns an array of x and y positions defining the perimeter of a blob of non‑transparent pixels on a canvas.
+     */
+    (function (window) {
+      const MarchingSquaresOpt = {};
+
+      MarchingSquaresOpt.getBlobOutlinePoints = function (source_array, width, height = 0) {
+        // Note: the object should not be on the border of the array,
+        // since there is no padding of 1 pixel to handle points that touch edges
+        if (source_array instanceof HTMLCanvasElement) {
+          width = source_array.width;
+          height = source_array.height;
+          const data4 = source_array
+              .getContext('2d')
+              .getImageData(0, 0, width, height).data, // Uint8ClampedArray
+            len = width * height,
+            data = new Uint8Array(len);
+          for (let i = 0; i < len; ++i) {
+            data[i] = data4[i << 2];
+          }
+          source_array = data;
+        } else if (0 == height) {
+          height = (source_array.length / width) | 0;
         }
-        #canvas-container {
-            width: 1024px;
-            height: 1024px;
-            margin: auto;
-            border: 2px solid #000;
-            background: #ccc;
+
+        // find the starting point
+        const startingPoint = MarchingSquaresOpt.getFirstNonTransparentPixelTopDown(source_array, width, height);
+        if (null === startingPoint) {
+          console.log('[Warning] Marching Squares could not find an object in the given array');
+          return [];
         }
-        #controls {
-            margin-top: 10px;
+
+        // return list of w and h positions
+        return MarchingSquaresOpt.walkPerimeter(source_array, width, height, startingPoint.w, startingPoint.h);
+      };
+
+      MarchingSquaresOpt.getFirstNonTransparentPixelTopDown = function (source_array, width, height) {
+        let idx;
+        for (let h = 0 | 0; h < height; ++h) {
+          idx = (h * width) | 0;
+          for (let w = 0 | 0; w < width; ++w) {
+            if (source_array[idx] > 0) {
+              return { w: w, h: h };
+            }
+            ++idx;
+          }
         }
-    </style>
+        return null;
+      };
+
+      MarchingSquaresOpt.walkPerimeter = function (source_array, width, height, start_w, start_h) {
+        width = width | 0;
+        height = height | 0;
+
+        // Set up our return list
+        const point_list = [],
+          up = 1 | 0,
+          left = 2 | 0,
+          down = 3 | 0,
+          right = 4 | 0,
+          step_func = MarchingSquaresOpt.step;
+
+        let idx = 0 | 0,
+          // our current x and y positions (initialized to the starting point)
+          w = start_w,
+          h = start_h,
+          // the main while loop, continues stepping until we return to the initial point
+          next_step;
+        do {
+          // Evaluate our state and set up our next direction.
+          idx = (h - 1) * width + (w - 1);
+          next_step = step_func(idx, source_array, width);
+          // If our current point is within the image, add it to the list.
+          if (w >= 0 && w < width && h >= 0 && h < height) {
+            point_list.push(w + 1, h+1);
+          }
+          switch (next_step) {
+            case up:
+              --h;
+              break;
+            case left:
+              --w;
+              break;
+            case down:
+              ++h;
+              break;
+            case right:
+              ++w;
+              break;
+            default:
+              break;
+          }
+        } while (w != start_w || h != start_h);
+        point_list.push(w, h);
+        return point_list;
+      };
+
+      // Determines and sets the state of the 4 pixels that represent our current state.
+      MarchingSquaresOpt.step = function (idx, source_array, width) {
+        const up_left = 0 < source_array[idx + 1],
+          up_right = 0 < source_array[idx + 2],
+          down_left = 0 < source_array[idx + width + 1],
+          down_right = 0 < source_array[idx + width + 2],
+          none = 0 | 0,
+          up = 1 | 0,
+          left = 2 | 0,
+          down = 3 | 0,
+          right = 4 | 0;
+
+        let state = 0 | 0;
+        if (up_left) {
+          state |= 1;
+        }
+        if (up_right) {
+          state |= 2;
+        }
+        if (down_left) {
+          state |= 4;
+        }
+        if (down_right) {
+          state |= 8;
+        }
+        switch (state) {
+          case 1:
+            MarchingSquaresOpt.next_step = up;
+            break;
+          case 2:
+            MarchingSquaresOpt.next_step = right;
+            break;
+          case 3:
+            MarchingSquaresOpt.next_step = right;
+            break;
+          case 4:
+            MarchingSquaresOpt.next_step = left;
+            break;
+          case 5:
+            MarchingSquaresOpt.next_step = up;
+            break;
+          case 6:
+            if (MarchingSquaresOpt.next_step == up) {
+              MarchingSquaresOpt.next_step = left;
+            } else {
+              MarchingSquaresOpt.next_step = right;
+            }
+            break;
+          case 7:
+            MarchingSquaresOpt.next_step = right;
+            break;
+          case 8:
+            MarchingSquaresOpt.next_step = down;
+            break;
+          case 9:
+            if (MarchingSquaresOpt.next_step == right) {
+              MarchingSquaresOpt.next_step = up;
+            } else {
+              MarchingSquaresOpt.next_step = down;
+            }
+            break;
+          case 10:
+            MarchingSquaresOpt.next_step = down;
+            break;
+          case 11:
+            MarchingSquaresOpt.next_step = down;
+            break;
+          case 12:
+            MarchingSquaresOpt.next_step = left;
+            break;
+          case 13:
+            MarchingSquaresOpt.next_step = up;
+            break;
+          case 14:
+            MarchingSquaresOpt.next_step = left;
+            break;
+          default:
+            MarchingSquaresOpt.next_step = none;
+            break;
+        }
+        return MarchingSquaresOpt.next_step;
+      };
+
+      window.MarchingSquaresOpt = MarchingSquaresOpt;
+    })(window);
+  </script>
 </head>
 <body>
+  <h1>Face Hole Editor</h1>
+  <div id="canvas-container"></div>
+  <div id="controls">
+    <button id="prevTemplate">← Previous</button>
+    <button id="nextTemplate">Next →</button>
+    <input type="file" id="uploadInput" accept="image/*" />
+    <button id="cropButton">Crop</button>
+    <button id="saveButton">Save</button>
+  </div>
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      const container = document.getElementById("canvas-container");
+      const uploadInput = document.getElementById("uploadInput");
+      const prevButton = document.getElementById("prevTemplate");
+      const nextButton = document.getElementById("nextTemplate");
+      const saveButton = document.getElementById("saveButton");
+      const cropButton = document.getElementById("cropButton");
 
-    <h1>Face Hole Editor</h1>
+      let templates = [];
+      let currentTemplateIndex = 0;
 
-    <div id="canvas-container"></div>
+      // Create Konva Stage
+      const stage = new Konva.Stage({
+        container: "canvas-container",
+        width: 1024,
+        height: 1024
+      });
 
-    <div id="controls">
-        <button id="prevTemplate">← Previous</button>
-        <button id="nextTemplate">Next →</button>
-        <input type="file" id="uploadInput" accept="image/*">
-        <button id="saveButton">Save</button>
-    </div>
+      // Create Layers
+      const userImageLayer = new Konva.Layer();
+      const templateLayer = new Konva.Layer();
 
-    <script>
-        document.addEventListener("DOMContentLoaded", async () => {
-            const container = document.getElementById("canvas-container");
-            const uploadInput = document.getElementById("uploadInput");
-            const prevButton = document.getElementById("prevTemplate");
-            const nextButton = document.getElementById("nextTemplate");
-            const saveButton = document.getElementById("saveButton");
+      // Create Konva Transformer
+      const transformer = new Konva.Transformer({
+        enabledAnchors: ["top-left", "top-right", "bottom-left", "bottom-right"],
+        rotateEnabled: false,
+        boundBoxFunc: (oldBox, newBox) => {
+          if (newBox.width < 50 || newBox.height < 50) {
+            return oldBox;
+          }
+          return newBox;
+        }
+      });
+      userImageLayer.add(transformer);
 
-            let templates = [];
-            let currentTemplateIndex = 0;
+      let userImage = null;
+      let templateImage = new Konva.Image();
+      templateLayer.add(templateImage);
 
-            // Create Konva Stage
-            const stage = new Konva.Stage({
-                container: "canvas-container",
-                width: 1024,
-                height: 1024
-            });
+      // Fetch template images from the server
+      async function fetchTemplates() {
+        const response = await fetch("/api/template");
+        const data = await response.json();
+        templates = data.templates;
+        loadTemplate();
+      }
 
-            // Create Layers
-            const userImageLayer = new Konva.Layer();
-            const templateLayer = new Konva.Layer();
+      // Load and display the template
+      function loadTemplate() {
+        if (templates.length === 0) return;
+        const templateSrc = `/templates/${templates[currentTemplateIndex]}`;
+        const img = new Image();
+        img.src = templateSrc;
+        img.onload = () => {
+          templateLayer.remove();
+          templateImage.image(img);
+          templateImage.width(stage.width());
+          templateImage.height(stage.height());
+          templateLayer.listening(false)
+          stage.add(templateLayer)
+        };
+      }
 
-            // Create Konva Transformer
-            const transformer = new Konva.Transformer({
-                enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
-                rotateEnabled: false,
-                boundBoxFunc: (oldBox, newBox) => {
-                    if (newBox.width < 50 || newBox.height < 50) {
-                        return oldBox;
-                    }
-                    return newBox;
-                }
-            });
+      // Handle template switching
+      prevButton.addEventListener("click", () => {
+        currentTemplateIndex = (currentTemplateIndex - 1 + templates.length) % templates.length;
+        loadTemplate();
+      });
+      nextButton.addEventListener("click", () => {
+        currentTemplateIndex = (currentTemplateIndex + 1) % templates.length;
+        loadTemplate();
+      });
 
-            userImageLayer.add(transformer);
+      // Handle image upload
+      uploadInput.addEventListener("change", async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append("image", file);
+        const response = await fetch("/api/upload", { method: "POST", body: formData });
+        const data = await response.json();
+        const img = new Image();
+        img.src = data.imageUrl;
+        img.onload = () => {
+            stage.remove(userImageLayer)
+          if (userImage) {
+            userImage.destroy();
+            transformer.nodes([]);
+          }
+          // Create new Konva Image for the uploaded user image.
+          userImage = new Konva.Image({
+            image: img,
+            x: stage.width() / 4,
+            y: stage.height() / 4,
+            width: img.width / 2,
+            height: img.height / 2,
+            draggable: true,
+            name: "userImage"
+          });
+          userImage.on("mouseover", () => {
+            document.body.style.cursor = "pointer";
+          });
+          userImage.on("mouseout", () => {
+            document.body.style.cursor = "default";
+          });
+          userImageLayer.add(userImage);
+          stage.add(userImageLayer);
+          userImageLayer.moveToBottom();
+          transformer.nodes([userImage]);
+          transformer.moveToTop();
+          templateLayer.moveToTop();
+        };
+      });
 
-            let userImage = null;
-            let templateImage = new Konva.Image();
-            templateLayer.add(templateImage);
+      // Enable mouse wheel zoom on the user image
+      stage.on("wheel", (e) => {
+        e.evt.preventDefault();
+        if (!userImage) return;
+        const scaleBy = 1.05;
+        const oldScale = userImage.scaleX();
+        const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+        userImage.scale({ x: newScale, y: newScale });
+        userImageLayer.batchDraw();
+      });
 
-            // Fetch template images from the server
-            async function fetchTemplates() {
-                const response = await fetch("/api/template");
-                const data = await response.json();
-                templates = data.templates;
-                loadTemplate();
-            }
+      // --- Helper Functions for Clipping ---
 
-            // Load and display the template
-            function loadTemplate() {
-                if (templates.length === 0) return;
+      // Extract outline points from the template image using marching squares.
+      // Draw the template image (scaled to stage dimensions) into an offscreen canvas.
+      function getTemplateOutlinePoints(templateImg, width, height) {
+        const offscreenCanvas = document.createElement("canvas");
+        offscreenCanvas.width = width;
+        offscreenCanvas.height = height;
+        const ctx = offscreenCanvas.getContext("2d");
+        ctx.drawImage(templateImg, 0, 0, width, height);
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const len = width * height;
+        const data = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          data[i] = imageData.data[i * 4]; // using the red channel
+        }
+        const outlinePoints = MarchingSquaresOpt.getBlobOutlinePoints(data, width, height);
+        return outlinePoints;
+      }
 
-                const templateSrc = `/templates/${templates[currentTemplateIndex]}`;
-                const img = new Image();
-                img.src = templateSrc;
-                img.onload = () => {
-                    templateLayer.remove()
-                    templateImage.image(img);
-                    templateImage.width(stage.width());
-                    templateImage.height(stage.height());
-                    templateLayer.listening(false)
-                    stage.add(templateLayer)
-                };
-            }
+      // Use the outline points to clip the user image.
+      // Create an offscreen canvas with the same drawn dimensions as the user image,
+      // convert the outline from stage to local coordinates, set the clipping path, and draw the image.
+      function clipUserImage(userImage, outlinePoints) {
+        // Get the absolute position (top‑left) of the user image on the stage.
+        const pos = userImage.absolutePosition();
+        // Get the drawn dimensions based on the image’s size.
+        const drawnWidth = userImage.width();
+        const drawnHeight = userImage.height();
+        // Create an offscreen canvas matching the drawn dimensions.
+        const canvas = document.createElement("canvas");
+        canvas.width = drawnWidth;
+        canvas.height = drawnHeight;
+        const ctx = canvas.getContext("2d");
 
-            // Handle template switching
-            prevButton.addEventListener("click", () => {
-                currentTemplateIndex = (currentTemplateIndex - 1 + templates.length) % templates.length;
-                loadTemplate();
-            });
+        // Convert the outline points from stage coordinates to local coordinates.
+        const localPoints = [];
+        for (let i = 0; i < outlinePoints.length; i += 2) {
+          const stageX = outlinePoints[i];
+          const stageY = outlinePoints[i + 1];
+          const localX = stageX - pos.x;
+          const localY = stageY - pos.y;
+          localPoints.push(localX, localY);
+        }
 
-            nextButton.addEventListener("click", () => {
-                currentTemplateIndex = (currentTemplateIndex + 1) % templates.length;
-                loadTemplate();
-            });
+        // Set up the clipping path.
+        ctx.save();
+        ctx.beginPath();
+        if (localPoints.length >= 2) {
+          ctx.moveTo(localPoints[0], localPoints[1]);
+          for (let i = 2; i < localPoints.length; i += 2) {
+            ctx.lineTo(localPoints[i], localPoints[i + 1]);
+          }
+          ctx.closePath();
+          ctx.clip();
+        }
+        const scaleBy = 1.05;
+        const oldScale = userImage.scaleX();
+        const newScale = oldScale / scaleBy 
+        userImage.scale({ x: newScale, y: newScale });
+        // Draw the user image's source image into the offscreen canvas.
+        const img = userImage.image();
+        ctx.drawImage(img, 0, 0, drawnWidth, drawnHeight);
+        ctx.restore();
+        return canvas;
+      }
 
-            // Handle image upload
-            uploadInput.addEventListener("change", async (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
-
-                const formData = new FormData();
-                formData.append("image", file);
-
-                const response = await fetch("/api/upload", { method: "POST", body: formData });
-                const data = await response.json();
-
-                const img = new Image();
-                img.src = data.imageUrl;
-                img.onload = () => {
-                    stage.remove(userImageLayer)
-                    if (userImage) {
-                        userImage.destroy();
-                        transformer.nodes([]);
-                    }
-
-                    // Create new Konva Image
-                    userImage = new Konva.Image({
-                        image: img,
-                        x: stage.width() / 4,
-                        y: stage.height() / 4,
-                        width: img.width / 2,
-                        height: img.height / 2,
-                        draggable: true,
-                        name: "userImage"
-                    });
-
-                    // Fix Konva event registration issue
-                    userImage.on("mouseover", () => {
-                        document.body.style.cursor = "pointer";
-                    });
-
-                    userImage.on("mouseout", () => {
-                        document.body.style.cursor = "default";
-                    });
-
-                    userImageLayer.add(userImage);
-                    stage.add(userImageLayer)
-                    userImageLayer.moveToBottom()
-                    // Ensure transformer attaches correctly
-                    transformer.nodes([userImage]);
-                    transformer.moveToTop();
-                };
-            });
-
-
-            // Enable mouse wheel zoom only on user image
-            stage.on("wheel", (e) => {
-                e.evt.preventDefault();
-                if (!userImage) return;
-
-                const scaleBy = 1.05;
-                const oldScale = userImage.scaleX();
-                const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
-
-                userImage.scale({ x: newScale, y: newScale });
-                userImageLayer.batchDraw();
-            });
-
-            // Save the merged image
-saveButton.addEventListener("click", async () => {
-    transformer.remove();
+      // --- Save Button Handler ---
+      // When clicking "Save", first replace the original user image with the clipped version,
+      // then call stage.toDataURL() as before to save both images together.
+      cropButton.addEventListener("click", async () => {
+        const templateImg = templateImage.image();
+        const stageWidth = stage.width();
+        const stageHeight = stage.height();
+        // Get the outline points from the template image.
+        const outlinePoints = getTemplateOutlinePoints(templateImg, stageWidth, stageHeight);
+        console.log("Outline points:", outlinePoints);
+        // Clip the user image using the outline points.
+        const clippedCanvas = clipUserImage(userImage, outlinePoints);
+        const clippedDataUrl = clippedCanvas.toDataURL("image/png");
+        // Create a new Image element from the clipped result.
+        const clippedImg = new Image();
+        clippedImg.src = clippedDataUrl;
+        clippedImg.onload = () => {
+            userImage.image(clippedImg);
+        };
+      });
+      saveButton.addEventListener("click", async () => {
+        transformer.remove();
     transformer.nodes([]);
 
     // Get the image data from Konva
@@ -190,11 +451,11 @@ saveButton.addEventListener("click", async () => {
     transformer.nodes([userImage]);
     transformer.moveToTop();
     userImageLayer.add(transformer);
-});
+      });
 
-            await fetchTemplates();
-        });
-    </script>
-
+      // Start by fetching the templates.
+      await fetchTemplates();
+    });
+  </script>
 </body>
 </html>
