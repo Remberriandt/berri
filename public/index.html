@@ -292,8 +292,8 @@ if (w >= 0 && w < width && h >= 0 && h < height) {
         img.onload = () => {
           templateLayer.remove();
           templateImage.image(img);
-          templateImage.width(stage.width());
-          templateImage.height(stage.height());
+          templateImage.width(img.width);
+          templateImage.height(img.height);
           templateLayer.listening(false)
           stage.add(templateLayer)
         };
@@ -330,8 +330,8 @@ if (w >= 0 && w < width && h >= 0 && h < height) {
             image: img,
             x: stage.width() / 4,
             y: stage.height() / 4,
-            width: img.width / 2,
-            height: img.height / 2,
+            width: img.width,
+            height: img.height,
             draggable: true,
             name: "userImage"
           });
@@ -385,48 +385,51 @@ if (w >= 0 && w < width && h >= 0 && h < height) {
       // Create an offscreen canvas with the same drawn dimensions as the user image,
       // convert the outline from stage to local coordinates, set the clipping path, and draw the image.
       function clipUserImage(userImage, outlinePoints) {
-        // Get the absolute position (top‑left) of the user image on the stage.
-        const pos = userImage.absolutePosition();
-        // Get the drawn dimensions based on the image’s size.
-        const drawnWidth = userImage.width();
-        const drawnHeight = userImage.height();
-        // Create an offscreen canvas matching the drawn dimensions.
-        const canvas = document.createElement("canvas");
-        canvas.width = drawnWidth;
-        canvas.height = drawnHeight;
-        const ctx = canvas.getContext("2d");
+  // Use the image's absolute transform to convert stage points to local points.
+  // This transformation accounts for translation, scaling, and any rotation.
+  const transform = userImage.getAbsoluteTransform().copy();
+  transform.invert();
 
-        // Convert the outline points from stage coordinates to local coordinates.
-        const localPoints = [];
-        for (let i = 0; i < outlinePoints.length; i += 2) {
-          const stageX = outlinePoints[i];
-          const stageY = outlinePoints[i + 1];
-          const localX = stageX - pos.x;
-          const localY = stageY - pos.y;
-          localPoints.push(localX, localY);
-        }
+  // We want to crop based on the original image dimensions.
+  // Note: userImage.width() and userImage.height() are the untransformed sizes.
+  const width = userImage.width();
+  const height = userImage.height();
 
-        // Set up the clipping path.
-        ctx.save();
-        ctx.beginPath();
-        if (localPoints.length >= 2) {
-          ctx.moveTo(localPoints[0], localPoints[1]);
-          for (let i = 2; i < localPoints.length; i += 2) {
-            ctx.lineTo(localPoints[i], localPoints[i + 1]);
-          }
-          ctx.closePath();
-          ctx.clip();
-        }
-        const scaleBy = 1.05;
-        const oldScale = userImage.scaleX();
-        const newScale = oldScale / scaleBy 
-        userImage.scale({ x: newScale, y: newScale });
-        // Draw the user image's source image into the offscreen canvas.
-        const img = userImage.image();
-        ctx.drawImage(img, 0, 0, drawnWidth, drawnHeight);
-        ctx.restore();
-        return canvas;
-      }
+  // Create an offscreen canvas with the original image's size.
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+
+  // Convert the outline points from stage coordinates into the image's local coordinates.
+  const localPoints = [];
+  for (let i = 0; i < outlinePoints.length; i += 2) {
+    const stagePoint = { x: outlinePoints[i], y: outlinePoints[i + 1] };
+    const localPoint = transform.point(stagePoint);
+    localPoints.push(localPoint.x, localPoint.y);
+  }
+
+  // Set up the clipping path on the offscreen canvas.
+  ctx.save();
+  ctx.beginPath();
+  if (localPoints.length >= 2) {
+    ctx.moveTo(localPoints[0], localPoints[1]);
+    for (let i = 2; i < localPoints.length; i += 2) {
+      ctx.lineTo(localPoints[i], localPoints[i + 1]);
+    }
+    ctx.closePath();
+    ctx.clip();
+  }
+
+  // Draw the user image's source image onto the offscreen canvas.
+  // Since we're drawing the untransformed source, use the original width and height.
+  const img = userImage.image();
+  ctx.drawImage(img, 0, 0, width, height);
+  ctx.restore();
+
+  return canvas;
+}
+
 
       // --- Save Button Handler ---
       // When clicking "Save", first replace the original user image with the clipped version,
